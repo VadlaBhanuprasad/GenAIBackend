@@ -3,7 +3,6 @@ uvicorn
 python-multipart
 langchain
 langchain-community
-langchain-ollama
 langchain-core
 pypdf
 pydantic
@@ -12,8 +11,7 @@ httpx
 bs4
 beautifulsoup4
 
-# added for chatbot UI and HTTP calls
-streamlit
+# HTTP calls
 requests
 langchain-huggingface
 
