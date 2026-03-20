@@ -1,37 +1,41 @@
-# Use an official Python runtime as a parent image
+# Use a lightweight Python base image
 FROM python:3.11-slim
 
 # Set environment variables
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
-ENV PORT=8000
+ENV PORT=10000
 
 # Set work directory
 WORKDIR /app
 
-# Install system dependencies
+# Install system dependencies (build-essential needed for some scikit/numpy builds)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     && rm -rf /var/lib/apt/lists/*
 
-# Install dependencies
-COPY requirements.txt .
+# Force the installation of the CPU-only version of PyTorch
+# This is CRITICAL to keep the image size small (< 1GB instead of 8GB+)
+# Railway and Render do not provide GPUs on free/standard tiers
 RUN pip install --no-cache-dir --upgrade pip && \
-    pip install --no-cache-dir -r requirements.txt
+    pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cpu
 
-# Copy the application code
+# Copy and install rest of dependencies
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Copy project files
 COPY . .
 
-# Create necessary directories
+# Ensure storage directories exist
 RUN mkdir -p uploads chroma_db
 
-# Pre-download the HuggingFace embedding model used in the RAG service
-# This helps with faster startup times and avoids runtime downloads
+# Pre-download the embedding model (~400MB) during build to speed up cold starts
+# This avoids downloading the 400MB+ model every time the container spins up
 RUN python -c "from langchain_huggingface import HuggingFaceEmbeddings; HuggingFaceEmbeddings(model_name='all-MiniLM-L6-v2')"
 
-# Expose the port
+# Expose the assigned PORT
 EXPOSE ${PORT}
 
-# Run the app
-# Use 'sh -c' to expand the $PORT environment variable provided by Render
+# Run the FastAPI app via uvicorn
 CMD ["sh", "-c", "uvicorn main:app --host 0.0.0.0 --port ${PORT}"]
