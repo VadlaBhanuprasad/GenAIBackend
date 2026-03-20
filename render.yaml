@@ -9,7 +9,7 @@ services:
     autoDeploy: true
     envVars:
       - key: PORT
-        value: 10000
+        value: 8000
       - key: OPEN_ROUTER_KEY
         sync: false # Requires manual entry in the dashboard
       - key: OPEN_ROUTER_MODEL

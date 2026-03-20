@@ -19,7 +19,7 @@ This repository includes a `render.yaml` blueprint for easy deployment on Render
 | `OPEN_ROUTER_KEY` | Your OpenRouter API Key | |
 | `OPEN_ROUTER_MODEL` | Preferred model (e.g., `stepfun/step-3.5-flash:free`) | `stepfun/step-3.5-flash:free` |
 | `CORS_ORIGINS` | Comma-separated allowed origins | `http://localhost:3000` |
-| `PORT` | The port the server listens on | `8000` (Render overrides to `10000`) |
+| `PORT` | The port the server listens on | `8000` |
 
 ## 🛠 Local Setup
 
