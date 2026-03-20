@@ -1,0 +1,20 @@
+services:
+  - type: web
+    name: genai-chat-backend
+    env: docker
+    plan: free # Change to starter/pro if needed for more RAM
+    region: ohio # Change to your preferred region (e.g. singapore, frankfurt, oregon)
+    dockerfilePath: Dockerfile
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: PORT
+        value: 10000
+      - key: OPEN_ROUTER_KEY
+        sync: false # Requires manual entry in the dashboard
+      - key: OPEN_ROUTER_MODEL
+        value: "stepfun/step-3.5-flash:free"
+      - key: CORS_ORIGINS
+        value: "http://localhost:3000,http://localhost:3001" # Update after frontend deployment
+      - key: PYTHON_VERSION
+        value: 3.11.0
