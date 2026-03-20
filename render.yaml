@@ -6,6 +6,8 @@ services:
     region: ohio # Change to your preferred region (e.g. singapore, frankfurt, oregon)
     dockerfilePath: Dockerfile
     healthCheckPath: /health
+    buildCommand: "pip install uv && uv sync"
+    startCommand: "uv run uvicorn main:app --host 0.0.0.0 --port $PORT"
     autoDeploy: true
     envVars:
       - key: PORT
