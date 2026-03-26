@@ -51,7 +51,10 @@ SYSTEM_PROMPTS = {
 }
 
 
-def call_openrouter(messages, model=OPEN_ROUTER_MODEL):
+def call_openrouter(messages, model=None):
+    from app.config import OPEN_ROUTER_KEY, OPEN_ROUTER_MODEL
+    model = model or OPEN_ROUTER_MODEL
+    
     payload = {
         "model": model,
         "messages": messages,
@@ -60,7 +63,7 @@ def call_openrouter(messages, model=OPEN_ROUTER_MODEL):
     resp = requests.post(
         url="https://openrouter.ai/api/v1/chat/completions",
         headers={
-            "Authorization": "Bearer " + OPEN_ROUTER_KEY,
+            "Authorization": f"Bearer {OPEN_ROUTER_KEY}",
             "Content-Type": "application/json",
         },
         data=json.dumps(payload),
