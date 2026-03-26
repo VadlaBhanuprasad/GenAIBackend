@@ -1,5 +1,5 @@
 """
-FastAPI Application Entry Point
+FastAPI Application Entry Point (Reloaded to apply CORS changes)
 
 Routes:
   POST   /api/chat              — Stream chat (general/coding/document modes)
