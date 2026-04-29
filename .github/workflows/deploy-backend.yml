@@ -13,7 +13,7 @@ name: Build, Push, and Deploy Backend
 on:
   push:
     branches:
-      - main          # Runs full pipeline: build + push + ECS deploy
+      - master          # Runs full pipeline: build + push + ECS deploy
     tags:
       - 'v*'          # Runs only: build + push (no ECS deploy)
  
@@ -62,7 +62,7 @@ jobs:
       # ── Step 4 ─────────────────────────────────────────────
       # Decide what tag(s) to apply to the Docker image:
       #
-      #   main branch push  → "latest" + "build-<7-char-sha>"
+      #   master branch push  → "latest" + "build-<7-char-sha>"
       #                        e.g. latest, build-a1b2c3d
       #
       #   version tag push  → the version string only
@@ -111,17 +111,17 @@ jobs:
   # ──────────────────────────────────────────────────────────
   # JOB 2: Deploy the new image to Amazon ECS (Fargate)
   #
-  # ⚠️  Runs ONLY when the trigger is a push to 'main' branch.
+  # ⚠️  Runs ONLY when the trigger is a push to 'master' branch.
   #     Skipped entirely for version tags (v1.0.0, etc.)
   # ──────────────────────────────────────────────────────────
   deploy-to-ecs:
-    name: Deploy to ECS (Main Branch Only)
+    name: Deploy to ECS (Master Branch Only)
     runs-on: ubuntu-latest
     environment: production
     needs: build-and-push   # Wait for the build job to succeed first
  
     # This condition ensures ECS deploy is skipped for tag pushes
-    if: github.ref == 'refs/heads/main'
+    if: github.ref == 'refs/heads/master'
  
     steps:
  
