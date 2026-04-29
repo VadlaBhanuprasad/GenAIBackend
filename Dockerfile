@@ -12,6 +12,7 @@ WORKDIR /app
 # Install system dependencies (build-essential needed for some scikit/numpy builds)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
+    curl \
     && rm -rf /var/lib/apt/lists/*
 
 # Force the installation of the CPU-only version of PyTorch
@@ -36,6 +37,10 @@ RUN python -c "from langchain_huggingface import HuggingFaceEmbeddings; HuggingF
 
 # Expose the assigned PORT (defaulted to 8000)
 EXPOSE 8000
+
+# Docker health check to verify the app is running
+HEALTHCHECK --interval=30s --timeout=30s --start-period=5s --retries=3 \
+  CMD curl -f http://localhost:${PORT:-8000}/health || exit 1
 
 # Run the FastAPI app via uvicorn
 # We use the PORT environment variable to allow cloud platform overrides
