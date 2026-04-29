@@ -1,0 +1,162 @@
+# ============================================================
+# Workflow: Build, Push to ECR, and Deploy to ECS (Fargate)
+# ============================================================
+#
+# Trigger rules:
+#   ✅ Push to 'main'   → Build image + Push to ECR + Deploy to ECS
+#   ✅ Push a version tag (e.g. v1.0.0) → Build image + Push to ECR ONLY
+#                                          (no ECS deploy for release tags)
+# ============================================================
+ 
+name: Build, Push, and Deploy Backend
+ 
+on:
+  push:
+    branches:
+      - main          # Runs full pipeline: build + push + ECS deploy
+    tags:
+      - 'v*'          # Runs only: build + push (no ECS deploy)
+ 
+# ── Global environment variables ────────────────────────────
+# These are loaded from GitHub Secrets (Settings → Secrets → Actions)
+env:
+  AWS_REGION:     ${{ secrets.AWS_REGION }}
+  ECR_REPOSITORY: ${{ secrets.ECR_REPOSITORY }}
+  ECS_CLUSTER:    ${{ secrets.ECS_CLUSTER }}
+  ECS_SERVICE:    ${{ secrets.ECS_SERVICE }}
+ 
+# ── Jobs ────────────────────────────────────────────────────
+jobs:
+ 
+  # ──────────────────────────────────────────────────────────
+  # JOB 1: Build the Docker image and push it to Amazon ECR
+  # ──────────────────────────────────────────────────────────
+  build-and-push:
+    name: Build and Push Docker Image to ECR
+    runs-on: ubuntu-latest
+    environment: production
+ 
+    steps:
+ 
+      # ── Step 1 ─────────────────────────────────────────────
+      # Pull the latest source code from the repository
+      - name: Checkout Source Code
+        uses: actions/checkout@v4
+ 
+      # ── Step 2 ─────────────────────────────────────────────
+      # Authenticate GitHub Actions runner with AWS
+      # Uses AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY from GitHub Secrets
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region:            ${{ env.AWS_REGION }}
+ 
+      # ── Step 3 ─────────────────────────────────────────────
+      # Get a temporary login token to push images into ECR
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+ 
+      # ── Step 4 ─────────────────────────────────────────────
+      # Decide what tag(s) to apply to the Docker image:
+      #
+      #   main branch push  → "latest" + "build-<7-char-sha>"
+      #                        e.g. latest, build-a1b2c3d
+      #
+      #   version tag push  → the version string only
+      #                        e.g. v1.0.0
+      - name: Determine Image Tags
+        id: set-tags
+        run: |
+          # Shorten the full commit SHA to 7 characters for readability
+          SHORT_SHA=$(echo "${{ github.sha }}" | cut -c1-7)
+ 
+          if [[ "$GITHUB_REF" == refs/tags/* ]]; then
+            # Extract the version tag (e.g. "v1.0.0") from the git ref
+            VERSION_TAG="${GITHUB_REF#refs/tags/}"
+            echo "Event: version tag push → tagging as $VERSION_TAG"
+            echo "tags=$VERSION_TAG" >> $GITHUB_OUTPUT
+          else
+            # Standard branch push → apply two tags for traceability
+            echo "Event: branch push → tagging as latest + build-$SHORT_SHA"
+            echo "tags=latest,build-$SHORT_SHA" >> $GITHUB_OUTPUT
+          fi
+ 
+      # ── Step 5 ─────────────────────────────────────────────
+      # Build the Docker image once, then tag and push it with
+      # every tag determined in the previous step
+      - name: Build and Push Docker Image
+        env:
+          ECR_REGISTRY:  ${{ steps.login-ecr.outputs.registry }}
+          TARGET_TAGS:   ${{ steps.set-tags.outputs.tags }}
+        run: |
+          echo "Building Docker image..."
+          docker build -t backend-image .
+ 
+          # Loop over each tag (comma-separated) and push individually
+          IFS=',' read -ra TAG_ARRAY <<< "$TARGET_TAGS"
+          for TAG in "${TAG_ARRAY[@]}"; do
+            FULL_IMAGE="$ECR_REGISTRY/$ECR_REPOSITORY:$TAG"
+            echo "Tagging → $FULL_IMAGE"
+            docker tag backend-image "$FULL_IMAGE"
+ 
+            echo "Pushing → $FULL_IMAGE"
+            docker push "$FULL_IMAGE"
+          done
+ 
+          echo "✅ All images pushed to ECR successfully."
+ 
+  # ──────────────────────────────────────────────────────────
+  # JOB 2: Deploy the new image to Amazon ECS (Fargate)
+  #
+  # ⚠️  Runs ONLY when the trigger is a push to 'main' branch.
+  #     Skipped entirely for version tags (v1.0.0, etc.)
+  # ──────────────────────────────────────────────────────────
+  deploy-to-ecs:
+    name: Deploy to ECS (Main Branch Only)
+    runs-on: ubuntu-latest
+    environment: production
+    needs: build-and-push   # Wait for the build job to succeed first
+ 
+    # This condition ensures ECS deploy is skipped for tag pushes
+    if: github.ref == 'refs/heads/main'
+ 
+    steps:
+ 
+      # ── Step 1 ─────────────────────────────────────────────
+      # Re-authenticate with AWS (each job gets a fresh runner)
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region:            ${{ env.AWS_REGION }}
+ 
+      # ── Step 2 ─────────────────────────────────────────────
+      # Tell ECS to start a new deployment using the latest image.
+      # ECS will pull the fresh "latest" tag and spin up new tasks.
+      - name: Trigger ECS Force Deployment
+        run: |
+          echo "Triggering new ECS deployment..."
+          aws ecs update-service \
+            --region   "$AWS_REGION"   \
+            --cluster  "$ECS_CLUSTER"  \
+            --service  "$ECS_SERVICE"  \
+            --force-new-deployment
+          echo "✅ ECS deployment initiated."
+ 
+      # ── Step 3 ─────────────────────────────────────────────
+      # Wait until ECS reports all tasks as healthy and running.
+      # This prevents the workflow from marking success before
+      # the service is actually up.
+      # Default timeout: 10 minutes (AWS CLI default)
+      - name: Wait for ECS Service to Stabilize
+        run: |
+          echo "Waiting for ECS service to become stable..."
+          aws ecs wait services-stable \
+            --region  "$AWS_REGION"   \
+            --cluster "$ECS_CLUSTER"  \
+            --services "$ECS_SERVICE"
+          echo "✅ ECS service is stable and healthy."
